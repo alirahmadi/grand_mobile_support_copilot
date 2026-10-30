@@ -1,6 +1,6 @@
 # Support Copilot
 
-[![tests](https://github.com/alirahmadi0910/grand-mobile-support-copilot/actions/workflows/tests.yml/badge.svg)](https://github.com/alirahmadi0910/grand-mobile-support-copilot/actions/workflows/tests.yml)
+[![tests](https://github.com/alirahmadi/grand_mobile_support_copilot/actions/workflows/tests.yml/badge.svg)](https://github.com/alirahmadi/grand_mobile_support_copilot/actions/workflows/tests.yml)
 
 Триаж обращений игроков Grand Mobile (Decentrathon 6.0, кейс 03): язык, категория, приоритет, дубли и спам,
 извлечение фактов, черновик ответа на языке игрока с цитатами правил и флаг «нужен человек».
