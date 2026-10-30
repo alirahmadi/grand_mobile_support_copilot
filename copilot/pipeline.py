@@ -9,7 +9,7 @@ from pathlib import Path
 from . import templates as tpl
 from .classify import Classifier
 from .concepts import ConceptMap, load_concepts
-from .config import AUTO_REPLY_MIN_CONFIDENCE, MODELS_DIR, data_file
+from .config import AUTO_REPLY_MIN_CONFIDENCE, COMPLAINT_AUTO_MIN_CONFIDENCE, MODELS_DIR, data_file
 from .dedup import DedupStore, spam_check
 from .extract import extract_facts, parse_request, parse_time
 from .guard import ALWAYS_HUMAN_CONCEPTS, ALWAYS_HUMAN_REASON, find_promises, validate_citations
@@ -116,7 +116,42 @@ class Copilot:
         return stats[0][0] if stats else None
 
     def triage(self, req: dict) -> dict:
-        return self.finish(self.prepare(req))
+        try:
+            return self.finish(self.prepare(req))
+        except Exception as e:  # never fail the whole request/batch because of one odd ticket
+            return self.fallback_response(req, e)
+
+    def fallback_response(self, req, error: Exception) -> dict:
+        kind = str((req or {}).get("kind") or "report").lower() if isinstance(req, dict) else "report"
+        kind = kind if kind in ("complaint", "report") else "report"
+        category = self.tax.fallback_category(kind)
+        text = tpl.render("generic_complaint" if kind == "complaint" else "generic", "ru")
+        return {
+            "lang": "und", "category": category, "priority": "p2" if "p2" in self.tax.priority_ids else self.tax.priority_ids[-1],
+            "is_spam_or_duplicate": False,
+            "extracted": {"nickname": None, "rule_refs": [], "has_evidence": None, "server": None},
+            "draft_reply": {"lang": "ru", "text": text, "cited": []},
+            "needs_human": True, "confidence": 0.0,
+            "reasons": ["обращение не удалось разобрать автоматически — нужен администратор"],
+            "meta": {"mode": "fallback", "error": f"{type(error).__name__}: {error}"[:300], "latency_ms": 0,
+                     "cost_usd": 0.0, "llm_error": None, "suggested_verdict": None},
+        }
+
+    def safe_prepare(self, req: dict):
+        if isinstance(req, dict) and "_bad_line" in req:
+            return {"_error": ValueError("строка не является корректным JSON"), "_req": req}
+        try:
+            return self.prepare(req)
+        except Exception as e:
+            return {"_error": e, "_req": req}
+
+    def safe_finish(self, P: dict) -> dict:
+        if "_error" in P:
+            return self.fallback_response(P["_req"], P["_error"])
+        try:
+            return self.finish(P)
+        except Exception as e:
+            return self.fallback_response(P.get("t", {}), e)
 
     # ------------------------------------------------------------------ stage 1 (sequential, cheap)
     def prepare(self, req: dict) -> dict:
@@ -163,6 +198,13 @@ class Copilot:
                     verdict, verdict_p = "appeal", max(vprobs["appeal"], 0.6)
                 else:
                     verdict, verdict_p = mv, mp
+                    # "wrong format" without any formal reason (nick and a real description are present, no obscenity)
+                    # is usually the model guessing on unfamiliar (kk/uz) text: take the next most likely verdict
+                    if (mv == "invalid_format" and not facts["profanity"] and facts["nickname"]
+                            and facts["_text_letters"] >= 15 and concept not in NOT_A_COMPLAINT):
+                        alt = sorted(((p, v) for v, p in vprobs.items() if v not in ("invalid_format", "duplicate")), reverse=True)
+                        if alt:
+                            verdict, verdict_p = alt[0][1], alt[0][0]
             elif appeal_signal:
                 verdict, verdict_p = "appeal", 0.6
             elif facts["profanity"]:
@@ -251,13 +293,14 @@ class Copilot:
                 key = "admin_complaint"
             elif v == "invalid_format":
                 key = P["verdict_variant"] or "invalid_description"
-                needs_human, conf = False, P["verdict_p"]
+                needs_human, conf = P["verdict_p"] < COMPLAINT_AUTO_MIN_CONFIDENCE, P["verdict_p"]
                 reasons.append({"invalid_profanity": "в тексте жалобы оскорбления/мат (п. 1.2.7 правил жалоб)",
                                 "not_a_complaint": "это не жалоба на игрока, а вопрос или техническая проблема",
                                 "invalid_description": "нет ника нарушителя или описания нарушения"}[key])
             elif v == "need_evidence":
-                key, needs_human, conf = "need_evidence", False, P["verdict_p"]
-                reasons.append("доказательств недостаточно")
+                key, needs_human, conf = "need_evidence", P["verdict_p"] < COMPLAINT_AUTO_MIN_CONFIDENCE, P["verdict_p"]
+                reasons.append("доказательств недостаточно" + ("" if P["verdict_p"] >= COMPLAINT_AUTO_MIN_CONFIDENCE
+                                                                 else f" (уверенность модели {P['verdict_p']:.2f} — проверьте)"))
             elif v == "already_punished":
                 key = "already_punished"
                 reasons.append("по модели решений игрок, вероятно, уже наказан — проверьте историю наказаний")

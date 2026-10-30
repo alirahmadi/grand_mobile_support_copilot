@@ -1,6 +1,6 @@
 # Support Copilot — Grand Mobile x Decentrathon 6.0 (кейс 03)
 # Windows без make: python -m copilot.cli <команда> (см. README)
-PY ?= python
+PY ?= $(shell command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python)
 IN ?= data/tickets_valid.jsonl
 OUT ?= pred.jsonl
 PORT ?= 8000
@@ -23,7 +23,10 @@ train-final:      ## то же + валидация в базе знаний (п
 label:            ## LLM-псевдоразметка категорий/приоритетов (нужен ANTHROPIC_API_KEY)
 	$(PY) -m copilot.cli label --n $(N)
 
-predict:          ## make predict IN=tickets.jsonl OUT=pred.jsonl
+models/verdict.joblib:  # обучение запускается само, если моделей ещё нет
+	$(PY) -m copilot.cli train
+
+predict: models/verdict.joblib   ## make predict IN=tickets.jsonl OUT=pred.jsonl
 	$(PY) -m copilot.cli predict --in $(IN) --out $(OUT)
 
 predict-offline:

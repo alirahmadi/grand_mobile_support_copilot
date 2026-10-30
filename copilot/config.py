@@ -32,7 +32,7 @@ LLM_MODEL = os.getenv("COPILOT_LLM_MODEL", "claude-haiku-5-5")
 LLM_JUDGE_MODEL = os.getenv("COPILOT_JUDGE_MODEL", "claude-sonnet-5-5")
 # Hard deadline for one LLM call; on timeout we fall back to the offline draft,
 # which keeps p95 latency under the 5 s limit from the brief.
-LLM_TIMEOUT_S = float(os.getenv("COPILOT_LLM_TIMEOUT", "3.5"))
+LLM_TIMEOUT_S = float(os.getenv("COPILOT_LLM_TIMEOUT", "4.3"))
 LLM_MAX_TOKENS = int(os.getenv("COPILOT_LLM_MAX_TOKENS", "900"))
 LLM_WORKERS = int(os.getenv("COPILOT_WORKERS", "8"))
 
@@ -47,6 +47,9 @@ DEDUP_WINDOW_MIN = int(os.getenv("COPILOT_DEDUP_WINDOW_MIN", "60"))
 DEDUP_SIMILARITY = float(os.getenv("COPILOT_DEDUP_SIM", "0.55"))
 # Below this confidence a ticket is routed to a human even if nothing else requires it.
 AUTO_REPLY_MIN_CONFIDENCE = float(os.getenv("COPILOT_AUTO_MIN_CONF", "0.70"))
+# Complaint auto-replies (need evidence / wrong format) go out alone only when the verdict model is this sure:
+# on validation 0.85 gives 85% agreement with the admin's real decision (0.70 would give 72%).
+COMPLAINT_AUTO_MIN_CONFIDENCE = float(os.getenv("COPILOT_COMPLAINT_AUTO_MIN_CONF", "0.85"))
 
 SUPPORTED_LANGS = ("ru", "kk", "uz", "en", "es", "pt")
 

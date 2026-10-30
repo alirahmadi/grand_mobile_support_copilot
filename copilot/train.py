@@ -29,13 +29,25 @@ from .rules import REF_IN_TEXT_RE, RuleBook
 from .taxonomy import Taxonomy
 
 
-def iter_jsonl(path: Path):
+def iter_jsonl(path: Path, lenient: bool = False):
+    """JSON lines (optionally .gz). utf-8-sig tolerates a BOM from Windows editors.
+
+    lenient=True yields {"_bad_line": ...} for unparsable lines instead of raising, so a batch
+    prediction keeps one output line per input line.
+    """
     opener = gzip.open if str(path).endswith(".gz") else open
-    with opener(path, "rt", encoding="utf-8") as f:
+    with opener(path, "rt", encoding="utf-8-sig") as f:
         for line in f:
             line = line.strip()
-            if line:
+            if not line:
+                continue
+            try:
                 yield json.loads(line)
+            except json.JSONDecodeError:
+                if not lenient:
+                    raise
+                m = re.search(r'"ticket_id"\s*:\s*"([^"]+)"', line)
+                yield {"_bad_line": line[:200], "ticket_id": m.group(1) if m else None}
 
 
 def admin_reply(rec: dict) -> str:

@@ -41,6 +41,10 @@ class Classifier:
         scores = concept_scores(text, self.cmap.concepts, kind)
         for c in rule_concepts:  # what the player typed into the rule field is a (noisy) hint
             scores[c] = scores.get(c, 0.0) + 0.8
+        # topics that always go to a human (account, payment, threats) win over anything else they co-occur with
+        for urgent in ("threat", "account", "payment"):
+            if scores.get(urgent, 0) >= 1:
+                scores[urgent] = max(scores.values()) + 0.5
         ranked = sorted(scores.items(), key=lambda x: -x[1])
         concept = ranked[0][0] if ranked else None
         kw_conf = 0.0
@@ -61,9 +65,12 @@ class Classifier:
             ml_top = [(classes[i], round(float(proba[i]), 2)) for i in order]
             if ml_top:
                 ml_cat, ml_p = ml_top[0]
+                # The model learnt mostly from Russian texts: it decides when keywords found nothing,
+                # but may overrule an explicit keyword match (often kk/uz/en) only when it is very sure.
+                margin = 0.1 if not concept else max(0.25, 0.85 - cat_conf)
                 if ml_cat == category:
                     cat_conf = max(cat_conf, ml_p)
-                elif ml_p > cat_conf + 0.1:
+                elif ml_p > cat_conf + margin and not (concept and ml_cat.endswith(("offtopic", "invalid"))):
                     category, cat_conf = ml_cat, ml_p
                     concept = self.cmap.concept_for(category) if self.cmap.concept_for(category) in scores else concept
                 cat_top = ml_top

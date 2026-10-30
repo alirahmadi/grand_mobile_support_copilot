@@ -21,16 +21,17 @@ def percentile(values: list[float], q: float) -> float:
 
 def run_batch(copilot, records: list[dict], workers: int = LLM_WORKERS) -> list[dict]:
     # Stage 1 runs in chronological order so duplicate detection sees earlier tickets first.
-    order = sorted(range(len(records)), key=lambda i: (str(records[i].get("created_at") or ""), i))
+    order = sorted(range(len(records)),
+                   key=lambda i: (str(records[i].get("created_at") or "") if isinstance(records[i], dict) else "", i))
     prepared = [None] * len(records)
     for i in order:
-        prepared[i] = copilot.prepare(records[i])
+        prepared[i] = copilot.safe_prepare(records[i])
     # Stage 2 (LLM) in parallel.
     with ThreadPoolExecutor(max_workers=max(1, workers)) as ex:
-        results = list(ex.map(copilot.finish, prepared))
+        results = list(ex.map(copilot.safe_finish, prepared))
     out = []
     for rec, res in zip(records, results):
-        out.append({"ticket_id": rec.get("ticket_id"), **res})
+        out.append({"ticket_id": rec.get("ticket_id") if isinstance(rec, dict) else None, **res})
     return out
 
 
@@ -68,9 +69,16 @@ def _dist(values) -> dict:
 
 
 def main(inp: Path, out: Path, workers: int = LLM_WORKERS, use_llm: bool | None = None, keep_meta: bool = True):
+    from .config import MODELS_DIR
     from .pipeline import Copilot
+    if not (MODELS_DIR / "verdict.joblib").exists():
+        print("[predict] ВНИМАНИЕ: обученных моделей нет (models/ пуст) — сначала запустите `make train` "
+              "(python -m copilot.cli train). Сейчас будут работать только словари и шаблоны.")
     copilot = Copilot(use_llm=use_llm)
-    records = list(iter_jsonl(inp))
+    records = list(iter_jsonl(inp, lenient=True))
+    bad = sum(1 for r in records if "_bad_line" in r)
+    if bad:
+        print(f"[predict] warning: {bad} lines are not valid JSON — answered with a safe 'needs human' fallback")
     print(f"[predict] {len(records)} tickets from {inp} | LLM: {'on (' + copilot.llm.model + ')' if copilot.llm else 'off (offline templates)'}")
     t0 = time.time()
     results = run_batch(copilot, records, workers)
@@ -86,4 +94,8 @@ def main(inp: Path, out: Path, workers: int = LLM_WORKERS, use_llm: bool | None 
         json.dump(stats, f, ensure_ascii=False, indent=1)
     print(f"[predict] wrote {out} | " + ", ".join(f"{k}={stats[k]}" for k in
           ("needs_human_share", "latency_ms_p95", "cost_usd_per_ticket", "modes", "llm_errors")))
+    if copilot.llm and stats["llm_errors"] >= max(1, len(results) // 2):
+        first = next((r["meta"]["llm_error"] for r in results if r["meta"].get("llm_error")), "")
+        print(f"[predict] ВНИМАНИЕ: LLM не отвечает ({stats['llm_errors']} ошибок из {len(results)}), "
+              f"черновики сделаны шаблонами. Первая ошибка: {first}")
     return results, stats

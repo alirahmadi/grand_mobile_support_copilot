@@ -156,3 +156,19 @@ def test_punishment_translation_and_uz_script():
     assert translate_punishment("блокировкой чата на 30 минут", "ru") == "мут на 30 минут"
     assert translate_punishment("что-то непонятное", "uz") is None
     assert uz_latin_to_cyrillic("Assalomu alaykum! Rahmat.") == "Ассалому алайкум! Раҳмат."
+
+
+@pytest.mark.parametrize("req", [
+    {}, {"kind": "complaint"}, {"kind": "report", "messages": []}, {"kind": "report", "messages": "помогите"},
+    {"kind": "report", "messages": [{"role": "player", "text": None}]}, {"kind": "report", "messages": ["помогите", None]},
+    {"kind": "complaint", "images_count": "abc", "messages": [{"role": "player", "text": "оск", "attachments": "много"}]},
+    {"kind": "report", "messages": [{"role": "player", "text": 12345}]}, {"kind": "ticket", "region": 5, "server_lang": ["uz"]},
+    {"kind": "complaint", "rule_refs_raw": ["2.1", 5.2], "messages": [{"role": "player", "text": "{nick} {0} %s оск"}]},
+    {"_bad_line": "{oops", "ticket_id": "x"}, "not a dict", None,
+])
+def test_malformed_inputs_never_crash(cop, req):
+    r = cop.safe_finish(cop.safe_prepare(req))
+    assert r["category"] in cop.tax.by_id and r["priority"] in cop.tax.priority_ids
+    assert r["draft_reply"]["text"] and "{" not in r["draft_reply"]["text"]
+    if isinstance(req, dict) and "_bad_line" in req:
+        assert r["needs_human"] is True and r["meta"]["mode"] == "fallback"

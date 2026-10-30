@@ -25,49 +25,75 @@ SERVER_RE = re.compile(
 )
 
 
+def _int(v) -> int:
+    """Lenient int: 2, "2", ["a.png", "b.png"] -> 2; anything else -> 0."""
+    if isinstance(v, bool):
+        return int(v)
+    if isinstance(v, (int, float)):
+        return max(0, int(v))
+    if isinstance(v, (list, tuple)):
+        return len(v)
+    m = re.search(r"\d+", str(v or ""))
+    return int(m.group(0)) if m else 0
+
+
+def _str(v) -> str | None:
+    if v is None:
+        return None
+    if isinstance(v, (list, tuple)):
+        return " ".join(str(x) for x in v if x is not None) or None
+    return str(v)
+
+
 def parse_request(req: dict) -> dict:
-    """Normalise either the /triage contract or a full ticket record into one structure."""
+    """Normalise either the /triage contract or a full ticket record into one structure.
+
+    Lenient on purpose: a single malformed ticket must never break a batch run.
+    """
+    req = req if isinstance(req, dict) else {"messages": req}
     msgs = req.get("messages") or []
-    if isinstance(msgs, str):
-        msgs = [{"role": "player", "text": msgs}]
+    if isinstance(msgs, (str, dict)):
+        msgs = [msgs]
     if not msgs and req.get("text"):
         msgs = [{"role": "player", "text": req["text"]}]
     player, reported = [], []
     attachments = 0
     for m in msgs:
-        role = (m.get("role") or "player").lower()
-        text = m.get("text") or ""
+        if not isinstance(m, dict):
+            m = {"role": "player", "text": m}
+        role = str(m.get("role") or "player").lower()
+        text = _str(m.get("text")) or ""
         if role in ("admin", "administrator", "support", "moderator"):
             continue  # never look at the answer we are trying to predict
         if role in ("reported_player", "reported", "accused"):
             reported.append(text)
         else:
             player.append(text)
-        a = m.get("attachments", 0)
-        attachments += len(a) if isinstance(a, list) else int(a or 0)
+        attachments += _int(m.get("attachments", 0))
     images = req.get("images_count")
-    if images is None:
-        images = attachments
-    region = (req.get("region") or "").lower() or None
-    server_lang = (req.get("server_lang") or "").lower() or None
+    images = attachments if images is None else _int(images)
+    region = (_str(req.get("region")) or "").lower() or None
+    server_lang = (_str(req.get("server_lang")) or "").lower() or None
     kazakh = region == "kz" or server_lang == "kk"
     raw_player = "\n".join(t for t in player if t)
+    rule_raw = _str(req.get("rule_refs_raw"))
+    nick = _str(req.get("reported_nick"))
     return {
         "ticket_id": req.get("ticket_id"),
-        "kind": (req.get("kind") or "report").lower(),
-        "created_at": req.get("created_at"),
+        "kind": (_str(req.get("kind")) or "report").lower(),
+        "created_at": _str(req.get("created_at")),
         "region": region,
         "server_lang": server_lang,
-        "lang_hint": req.get("lang"),
-        "reporter_hash": req.get("reporter_hash"),
-        "reported_hash": req.get("reported_hash"),
-        "reported_nick": req.get("reported_nick"),
-        "rule_refs_raw": req.get("rule_refs_raw"),
-        "images_count": int(images or 0),
+        "lang_hint": _str(req.get("lang")),
+        "reporter_hash": _str(req.get("reporter_hash")),
+        "reported_hash": _str(req.get("reported_hash")),
+        "reported_nick": nick.strip() if nick and nick.strip() else None,
+        "rule_refs_raw": rule_raw,
+        "images_count": images,
         "raw_player_text": raw_player,
         "player_text": normalize(raw_player, kazakh=kazakh),
         # what the player typed into the «rule» field is often the only description ("оск", "дм", "опру")
-        "cls_text": normalize(raw_player + (" | " + str(req.get("rule_refs_raw")) if req.get("rule_refs_raw") else ""), kazakh=kazakh),
+        "cls_text": normalize(raw_player + (" | " + rule_raw if rule_raw else ""), kazakh=kazakh),
         "reported_text": normalize("\n".join(reported), kazakh=kazakh),
         "kazakh_server": kazakh,
     }
