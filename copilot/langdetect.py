@@ -9,7 +9,8 @@ import re
 
 from .textnorm import letters_count, tokens
 
-KK_SPECIFIC = set("әңөұүһі")          # not used in Russian or Uzbek Cyrillic
+KK_SPECIFIC = set("әңөұүһ")           # not used in Russian, Ukrainian or Uzbek Cyrillic
+UKRAINIAN = set("їєґ")
 UZ_CYR_SPECIFIC = set("ўҳ")
 SHARED_KK_UZ = set("қғ")
 
@@ -81,7 +82,7 @@ def detect_lang(text: str, hint: str | None = None) -> tuple[str, float]:
     lat = sum(1 for ch in low if "a" <= ch <= "z")
 
     if cyr >= lat:
-        kk_chars = sum(1 for ch in low if ch in KK_SPECIFIC)
+        kk_chars = sum(1 for ch in low if ch in KK_SPECIFIC) + (0.5 * low.count("і") if not any(c in low for c in UKRAINIAN) else 0)
         uz_chars = sum(1 for ch in low if ch in UZ_CYR_SPECIFIC)
         shared = sum(1 for ch in low if ch in SHARED_KK_UZ)
         scores = {
@@ -101,7 +102,9 @@ def detect_lang(text: str, hint: str | None = None) -> tuple[str, float]:
     # Latin script
     apos_uz = len(re.findall(r"\b\w*[og]'\w*", low)) + len(re.findall(r"\b\w*(?:sh|ch)\w*", low)) * 0.3
     scores = {
-        "uz": 2.0 * _score(words, UZ_LAT_WORDS) + 1.5 * apos_uz + 0.3 * low.count("q"),
+        "uz": 2.0 * _score(words, UZ_LAT_WORDS) + 1.5 * apos_uz + 0.3 * low.count("q")
+              + 0.5 * sum(1 for w in words if len(w) > 4 and re.search(r"(man|miz|siz|ngiz|lar|dan|dagi|yapti|yapman|moqda|gan|ing|ni|ga|da)$", w)
+                          and w not in EN_WORDS),
         "en": 2.0 * _score(words, EN_WORDS),
         "es": 2.0 * _score(words, ES_WORDS) + 1.0 * len(re.findall(r"[ñ¿¡]", low)),
         "pt": 2.0 * _score(words, PT_WORDS) + 1.0 * len(re.findall(r"[ãõç]", low)),
@@ -116,24 +119,26 @@ def detect_lang(text: str, hint: str | None = None) -> tuple[str, float]:
 
 
 class LangDetector:
-    """Heuristic detector, optionally blended with a char-n-gram model trained on train.lang."""
+    """Heuristic detector, optionally blended with a char-n-gram model trained on train.lang.
+
+    The organisers' `lang` labels are themselves heuristic (they include 'lat' and many false 'pt'),
+    so the model may only switch the answer to Kazakh or Uzbek, where the heuristic is weakest.
+    """
 
     def __init__(self, model=None):
-        self.model = model  # sklearn pipeline with predict_proba, or None
+        self.model = model
 
     def detect(self, text: str, hint: str | None = None) -> tuple[str, float]:
         lang, conf = detect_lang(text, hint)
-        if self.model is not None and letters_count(text) >= 2:
+        if self.model is not None and letters_count(text) >= 4 and lang in ("ru", "und", "en") and conf < 0.8:
             try:
                 proba = self.model.predict_proba([text])[0]
                 classes = list(self.model.classes_)
                 i = int(proba.argmax())
-                m_lang, m_conf = classes[i], float(proba[i])
-                if m_lang != "und" and (m_conf > conf or lang == "und"):
-                    lang, conf = m_lang, round(m_conf, 2)
+                if classes[i] in ("kk", "uz") and float(proba[i]) >= 0.7:
+                    lang, conf = classes[i], round(float(proba[i]), 2)
             except Exception:
                 pass
-        # The dataset carries the organisers' own heuristic label; trust it when we are unsure.
-        if hint and hint not in ("und", None, "") and conf < 0.6:
+        if hint in ("ru", "kk", "uz", "en") and conf < 0.6:
             return hint, 0.6
         return lang, conf

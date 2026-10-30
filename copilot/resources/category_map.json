@@ -1,0 +1,75 @@
+{
+ "_doc": "Явное сопоставление концептов с категориями taxonomy.json: [категория для complaint, категория для report]. Используется, если коды есть в таксономии; иначе сопоставление по названиям.",
+ "insult": [
+  "complaint.insult",
+  "report.complaint"
+ ],
+ "threat": [
+  "complaint.insult",
+  "report.complaint"
+ ],
+ "cheat": [
+  "complaint.cheat",
+  "report.complaint"
+ ],
+ "dm": [
+  "complaint.dm",
+  "report.complaint"
+ ],
+ "nonrp": [
+  "complaint.dm",
+  "report.complaint"
+ ],
+ "scam": [
+  "complaint.scam",
+  "report.complaint"
+ ],
+ "rmt_ads": [
+  "complaint.rmt_ads",
+  "report.complaint"
+ ],
+ "admin_abuse": [
+  "complaint.admin",
+  "report.complaint"
+ ],
+ "ban_appeal": [
+  "complaint.admin",
+  "report.question"
+ ],
+ "account": [
+  "complaint.other",
+  "report.account"
+ ],
+ "lost_items": [
+  "complaint.invalid",
+  "report.account"
+ ],
+ "payment": [
+  "complaint.invalid",
+  "report.payment"
+ ],
+ "stuck": [
+  "complaint.invalid",
+  "report.help"
+ ],
+ "bug": [
+  "complaint.invalid",
+  "report.help"
+ ],
+ "question": [
+  "complaint.invalid",
+  "report.question"
+ ],
+ "freebie": [
+  "complaint.invalid",
+  "report.offtopic"
+ ],
+ "spam_ads": [
+  "complaint.invalid",
+  "report.offtopic"
+ ],
+ "gratitude": [
+  "complaint.invalid",
+  "report.offtopic"
+ ]
+}

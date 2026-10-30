@@ -18,7 +18,7 @@ from pathlib import Path
 
 from .config import LLM_JUDGE_MODEL, MODELS_DIR, REPORTS_DIR
 from .predict import run_batch, summarize
-from .train import admin_reply, canon_reply, iter_jsonl, parse_violation
+from .train import VERDICT_MAP, VERDICT_SKIP, admin_reply, canon_reply, iter_jsonl, parse_violation
 
 
 def chrf(hyp: str, ref: str, n: int = 6, beta: float = 2.0) -> float:
@@ -134,10 +134,11 @@ def evaluate(valid_path: Path, out_dir: Path = REPORTS_DIR, use_llm: bool | None
     samples = []
     for g, p in zip(gold, preds):
         ref = admin_reply(g)
-        if g.get("kind") == "complaint" and g.get("verdict"):
-            v_true.append(g["verdict"])
+        gv = VERDICT_MAP.get(g.get("verdict"), g.get("verdict"))
+        if g.get("kind") == "complaint" and gv not in VERDICT_SKIP:
+            v_true.append(gv)
             v_pred.append(p["meta"].get("suggested_verdict") or "approved")
-            is_dup_true = g["verdict"] == "duplicate"
+            is_dup_true = gv == "duplicate"
             if p["meta"].get("is_duplicate") and is_dup_true:
                 dup_tp += 1
             elif p["meta"].get("is_duplicate") and not is_dup_true:

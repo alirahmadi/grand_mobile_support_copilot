@@ -21,6 +21,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 from .classify import Classifier, verdict_feature_tokens
+from .templates import translate_punishment
 from .concepts import ConceptMap, concept_scores, load_concepts
 from .config import MODELS_DIR, data_file
 from .extract import NICK_RE, extract_facts, parse_request
@@ -48,8 +49,13 @@ _ADDR = re.compile(r"^\s*(уважаем(ый|ая|ые)|дорог(ой|ая)|d
 def canon_reply(text: str) -> str:
     t = NICK_RE.sub("{nick}", text or "")
     t = t.replace("<nick>", "{nick}")
+    t = re.sub(r"\s*(под\s+)?#+\s*<digits>(-?(raqamli|shikoyat\w*))?", "", t)
     t = _ADDR.sub("", t)
     return re.sub(r"\s+", " ", t).strip()
+
+
+VERDICT_MAP = {"appeal_approved": "appeal", "appeal_rejected": "appeal"}
+VERDICT_SKIP = {None, "", "other", "closed"}
 
 
 def template_key(text: str) -> str:
@@ -61,10 +67,8 @@ def template_key(text: str) -> str:
 def parse_violation(v: str, book: RuleBook) -> tuple[str | None, list[str]]:
     if not v:
         return None, []
-    m = REF_IN_TEXT_RE.search(v)
-    rid = book.resolve(m.group(1).replace(",", ".")) if m else None
-    aliases = re.findall(r"[^\W\d_]{2,8}", v)
-    return rid, aliases
+    ids = book.parse_refs(v)[0]
+    return (ids[0] if ids else None), re.findall(r"[^\W\d_]{2,8}", v)
 
 
 def train(train_path: Path, valid_path: Path | None, models_dir: Path = MODELS_DIR, include_valid: bool = False,
@@ -88,29 +92,23 @@ def train(train_path: Path, valid_path: Path | None, models_dir: Path = MODELS_D
             t = parse_request(rec)
             reply = admin_reply(rec)
             rid, aliases = parse_violation(rec.get("violation") or "", book)
-            if rid:
-                for a in aliases:
-                    alias_counts[a.lower()][rid] += 1
-                if rec.get("punishment"):
-                    punish_counts[rid][re.sub(r"\s+", " ", str(rec["punishment"]).strip().lower())] += 1
+            if rid and rec.get("punishment") and rec.get("verdict") == "approved":
+                p = str(rec["punishment"]).strip().lower()
+                if not re.search(r"[a-z]", p):  # Russian wording; uz-server strings are translated at render time
+                    punish_counts[rid][translate_punishment(p, "ru") or p] += 1
             rows.append({
-                "id": rec.get("ticket_id"), "kind": t["kind"], "text": t["player_text"], "reported": t["reported_text"],
-                "lang": rec.get("lang"), "verdict": rec.get("verdict"), "rule": rid, "reply": reply,
+                "id": rec.get("ticket_id"), "kind": t["kind"], "text": t["cls_text"], "reported": t["reported_text"],
+                "lang": rec.get("lang"), "region": rec.get("region"), "rule": rid, "reply": reply,
+                "verdict": VERDICT_MAP.get(rec.get("verdict"), rec.get("verdict")),
                 "category": rec.get("category"), "priority": rec.get("priority"), "_t": t,
             })
     print(f"[train] loaded {len(rows)} tickets in {time.time() - t_start:.1f}s")
 
     # ---- rule aliases & punishments
-    aliases = {}
-    for a, cnt in alias_counts.items():
-        rid, n = cnt.most_common(1)[0]
-        if n >= 3 and n / sum(cnt.values()) >= 0.6 and not re.fullmatch(r"п|пункт|правил[оа]?", a):
-            aliases[a] = rid
-            book.add_alias(a, rid)
-    punishments = {rid: cnt.most_common(3) for rid, cnt in punish_counts.items()}
-    _dump(models_dir / "rule_aliases.json", aliases)
+    punishments = {rid: cnt.most_common(3) for rid, cnt in punish_counts.items() if sum(cnt.values()) >= 3}
     _dump(models_dir / "punishments.json", punishments)
-    print(f"[train] aliases={len(aliases)} rules with punishment stats={len(punishments)}")
+    print(f"[train] rules with punishment stats={len(punishments)}: " +
+          ", ".join(f"{r}: {v[0][0]}" for r, v in list(punishments.items())[:8]))
 
     # ---- facts, weak concepts, concept -> rules
     cr_counts = defaultdict(Counter)
@@ -153,7 +151,7 @@ def train(train_path: Path, valid_path: Path | None, models_dir: Path = MODELS_D
                                                   class_weight="balanced", random_state=seed))
 
     # ---- verdict model (real supervision)
-    comp = [r for r in rows if r["kind"] == "complaint" and r["verdict"]]
+    comp = [r for r in rows if r["kind"] == "complaint" and r["verdict"] not in VERDICT_SKIP]
     vc = Counter(r["verdict"] for r in comp)
     keep = {v for v, n in vc.items() if n >= 20}
     comp = [r for r in comp if r["verdict"] in keep]
@@ -188,17 +186,26 @@ def train(train_path: Path, valid_path: Path | None, models_dir: Path = MODELS_D
             pseudo[rec["ticket_id"]] = rec
         print(f"[train] using {len(pseudo)} LLM pseudo-labels")
     X, y, yp, Xp = [], [], [], []
+    clf0 = Classifier(tax, cmap, models_dir / "__none__")  # keyword-only classifier for weak labels
+    weak = Counter()
     for r in rows:
         lab, prio, weight = None, None, 0
         if r["category"] in tax.by_id:
             lab, prio, weight = r["category"], r["priority"], 3
         elif r["id"] in pseudo and pseudo[r["id"]].get("category") in tax.by_id:
             lab, prio, weight = pseudo[r["id"]]["category"], pseudo[r["id"]].get("priority"), 2
-        elif r["concept"] and r["concept_score"] >= 1.5:
-            # weak label; the admin's actual violation overrides the keyword guess
-            c = rule_concept.get(r["rule"], (r["concept"], 0))[0] if r["rule"] else r["concept"]
-            lab = cmap.category_for(c, r["kind"])
-            weight = 1
+        else:
+            # weak label: keywords, overridden by what the admin actually decided
+            k = clf0.predict(r["kind"], r["text"], r["reported"], [], r["facts"])
+            if r["verdict"] == "appeal":
+                lab = cmap.category_for("ban_appeal", r["kind"])
+            elif r["rule"] and r["verdict"] == "approved" and rule_concept.get(r["rule"]):
+                lab = cmap.category_for(rule_concept[r["rule"]][0], r["kind"])
+            elif (r["concept"] and r["concept_score"] >= 1.5) or k["category"].endswith(("offtopic", "invalid")):
+                lab = k["category"]
+            weight = 1 if lab else 0
+            if lab:
+                weak[lab] += 1
         if not lab:
             continue
         x = Classifier.model_input(r["kind"], r["text"], r["reported"])
@@ -213,7 +220,7 @@ def train(train_path: Path, valid_path: Path | None, models_dir: Path = MODELS_D
         idx = idx[: max_clf * 2]
         m = text_clf().fit([X[i] for i in idx], [y[i] for i in idx])
         joblib.dump(m, models_dir / "category.joblib")
-        print(f"[train] category model on {len(idx)} weighted examples, {len(set(y))} classes")
+        print(f"[train] category model on {len(idx)} weighted examples, {len(set(y))} classes; weak labels: {dict(weak.most_common())}")
     else:
         print("[train] category model skipped (not enough labels) — keyword classifier will be used")
     if len(set(yp)) >= 2 and len(yp) >= 200:
@@ -239,7 +246,7 @@ def _build_kb(rows: list[dict], models_dir: Path, max_kb: int):
     mat = vec.fit_transform([r["text"] for r in kb])
     with gzip.open(models_dir / "kb.jsonl.gz", "wt", encoding="utf-8") as f:
         for r in kb:
-            f.write(json.dumps({"id": r["id"], "kind": r["kind"], "lang": r["lang"], "verdict": r["verdict"],
+            f.write(json.dumps({"id": r["id"], "kind": r["kind"], "lang": r["lang"], "region": r["region"], "verdict": r["verdict"],
                                 "rule": r["rule"], "text": r["text"][:400], "reply_canon": canon_reply(r["reply"])[:500]},
                                ensure_ascii=False) + "\n")
     joblib.dump({"vectorizer": vec, "matrix": mat}, models_dir / "kb_index.joblib", compress=3)

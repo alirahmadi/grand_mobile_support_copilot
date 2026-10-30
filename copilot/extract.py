@@ -6,11 +6,16 @@ from datetime import datetime
 from .rules import RuleBook
 from .textnorm import letters_count, normalize
 
-NICK_RE = re.compile(r"\b([A-Z][a-z]{1,15}_[A-Z][a-zA-Z]{1,20})\b")
+NICK_RE = re.compile(r"\b([A-Z][a-z]{1,15}_[A-Z][a-zA-Z]{1,20}\d{0,4})\b")
+# Complaint rules ЖБ 1.2.7: a complaint with obscenities/insults is not considered.
+PROFANITY_RE = re.compile(
+    r"\b(бля\w*|хуй\w*|хуе\w*|хуё\w*|нахуй|пизд\w*|еба\w*|ебл\w*|ёба\w*|сука|суки|сучк\w*|шлюх\w*|гандон\w*|"
+    r"пидор\w*|пидар\w*|мудак\w*|долбо\w*|уеб\w*|залуп\w*|дебил\w*|даун\w*|чмо\w*|fuck\w*|bitch\w*|"
+    r"qotaq\w*|jalab\w*|ам\w*ңды|сігейін)\b", re.I)
 EVIDENCE_RE = re.compile(
     r"скрин|скриншот|видео|запис|док-?в|доказ|пруф|proof|screen|video|clip|клип|фрапс|imgur|youtu|"
     r"yadi\.sk|disk\.yandex|drive\.google|gyazo|prnt\.sc|lightshot|vk\.com/video|t\.me/|https?://|"
-    r"сурет|бейне|дәлел|rasm|video|isbot|dalil|captura|prueba|print|vídeo",
+    r"сурет|бейне|дәлел|rasm|video|isbot|dalil|captura|prueba|print|vídeo|<url>",
     re.I,
 )
 NO_EVIDENCE_RE = re.compile(r"(нет|без|не (успел|сделал|могу)) (скрин|док|видео|запис)|no (proof|screens?)", re.I)
@@ -61,6 +66,8 @@ def parse_request(req: dict) -> dict:
         "images_count": int(images or 0),
         "raw_player_text": raw_player,
         "player_text": normalize(raw_player, kazakh=kazakh),
+        # what the player typed into the «rule» field is often the only description ("оск", "дм", "опру")
+        "cls_text": normalize(raw_player + (" | " + str(req.get("rule_refs_raw")) if req.get("rule_refs_raw") else ""), kazakh=kazakh),
         "reported_text": normalize("\n".join(reported), kazakh=kazakh),
         "kazakh_server": kazakh,
     }
@@ -84,12 +91,10 @@ def extract_facts(t: dict, book: RuleBook) -> dict:
 
     raw_refs = t.get("rule_refs_raw")
     valid, unknown = book.parse_refs(raw_refs) if raw_refs else ([], [])
-    # rule references typed into the message body
-    v2, u2 = book.parse_refs(" ".join(book.refs_in_text(text)))
-    for r in v2:
-        if r not in valid:
-            valid.append(r)
-    unknown += [u for u in u2 if u not in unknown]
+    # rule references written in the message body ("2.1 ОП", "1.2 GZ")
+    for r in book.find_refs(text):
+        if r["id"] and r["id"] not in valid:
+            valid.append(r["id"])
 
     if t["images_count"] > 0 or EVIDENCE_RE.search(text):
         has_evidence = True
@@ -106,6 +111,8 @@ def extract_facts(t: dict, book: RuleBook) -> dict:
     return {
         "nickname": nick,
         "rule_refs": valid,
+        "has_url": "<url>" in text or bool(re.search(r"https?://", text)),
+        "profanity": bool(PROFANITY_RE.search(text)),
         "has_evidence": has_evidence,
         "server": server,
         "_unknown_rule_refs": unknown,

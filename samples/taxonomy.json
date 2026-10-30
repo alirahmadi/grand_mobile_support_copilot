@@ -1,28 +1,157 @@
 {
-  "_note": "ДЕМО-ФИКСТУРА для тестов кода. Положите настоящий taxonomy.json в data/.",
-  "categories": [
-    {"id": "complaint.insult", "name": "Оскорбление", "description": "оскорбления игрока или родных в чате"},
-    {"id": "complaint.cheat", "name": "Читы", "description": "использование читов и стороннего ПО"},
-    {"id": "complaint.dm", "name": "DM/DB", "description": "убийство без причины"},
-    {"id": "complaint.nonrp", "name": "NonRP", "description": "нарушение ролевого процесса"},
-    {"id": "complaint.scam", "name": "Обман", "description": "мошенничество при сделках"},
-    {"id": "complaint.admin", "name": "Жалоба на администрацию", "description": "действия администратора"},
-    {"id": "complaint.other", "name": "Другое", "description": "прочие жалобы"},
-    {"id": "report.stuck", "name": "Застрял", "description": "застрял в текстурах, не может выбраться"},
-    {"id": "report.bug", "name": "Баг", "description": "ошибки и сбои игры"},
-    {"id": "report.lost_items", "name": "Пропажа имущества", "description": "пропали машина, дом, деньги"},
-    {"id": "report.payment", "name": "Платежи", "description": "донат не пришел, оплата"},
-    {"id": "report.account", "name": "Аккаунт", "description": "взлом, доступ к аккаунту"},
-    {"id": "report.ban_appeal", "name": "Обжалование", "description": "просьба снять бан или наказание"},
-    {"id": "report.player", "name": "Нарушение игрока", "description": "игрок оскорбляет, убивает, читерит прямо сейчас"},
-    {"id": "report.question", "name": "Вопрос", "description": "вопрос об игре"},
-    {"id": "report.other", "name": "Другое", "description": "прочее"},
-    {"id": "spam", "name": "Спам", "description": "реклама, флуд, бессмыслица"}
-  ],
-  "priorities": [
-    {"id": "p0", "name": "критично", "criteria": "взлом аккаунта, угрозы в реальной жизни, массовые читы"},
-    {"id": "p1", "name": "высокий", "criteria": "платежи, читы, мошенничество, жалобы на администрацию"},
-    {"id": "p2", "name": "средний", "criteria": "оскорбления, DM, NonRP, баги, апелляции"},
-    {"id": "p3", "name": "низкий", "criteria": "вопросы, застревания, спам"}
-  ]
+ "version": "DEMO — не таксономия организаторов, только коды из контракта ТЗ",
+ "categories": [
+  {
+   "code": "complaint.insult",
+   "kind": "complaint",
+   "title": "Оскорбления (демо)",
+   "rules": [
+    "2.1",
+    "2.4",
+    "2.6"
+   ],
+   "examples": []
+  },
+  {
+   "code": "complaint.cheat",
+   "kind": "complaint",
+   "title": "Читы (демо)",
+   "rules": [
+    "5.2"
+   ],
+   "examples": []
+  },
+  {
+   "code": "complaint.dm",
+   "kind": "complaint",
+   "title": "DM и нарушения RP (демо)",
+   "rules": [
+    "5.3",
+    "5.4",
+    "GZ"
+   ],
+   "examples": []
+  },
+  {
+   "code": "complaint.scam",
+   "kind": "complaint",
+   "title": "Обман (демо)",
+   "rules": [
+    "4.1",
+    "4.2"
+   ],
+   "examples": []
+  },
+  {
+   "code": "complaint.rmt_ads",
+   "kind": "complaint",
+   "title": "Реклама и RMT (демо)",
+   "rules": [
+    "2.3",
+    "4.4"
+   ],
+   "examples": []
+  },
+  {
+   "code": "complaint.admin",
+   "kind": "complaint",
+   "title": "На администратора (демо)",
+   "rules": [
+    "3.4"
+   ],
+   "examples": []
+  },
+  {
+   "code": "complaint.other",
+   "kind": "complaint",
+   "title": "Другое (демо)",
+   "rules": [],
+   "examples": []
+  },
+  {
+   "code": "complaint.invalid",
+   "kind": "complaint",
+   "title": "Не жалоба (демо)",
+   "rules": [
+    "ЖБ 1.1.2",
+    "ЖБ 1.2.7"
+   ],
+   "examples": []
+  },
+  {
+   "code": "report.question",
+   "kind": "report",
+   "title": "Вопрос (демо)",
+   "rules": [],
+   "examples": []
+  },
+  {
+   "code": "report.help",
+   "kind": "report",
+   "title": "Помощь (демо)",
+   "rules": [
+    "3.1"
+   ],
+   "examples": []
+  },
+  {
+   "code": "report.complaint",
+   "kind": "report",
+   "title": "Жалоба через репорт (демо)",
+   "rules": [],
+   "examples": []
+  },
+  {
+   "code": "report.account",
+   "kind": "report",
+   "title": "Аккаунт (демо)",
+   "rules": [
+    "1.4"
+   ],
+   "examples": []
+  },
+  {
+   "code": "report.payment",
+   "kind": "report",
+   "title": "Платёж (демо)",
+   "rules": [],
+   "examples": []
+  },
+  {
+   "code": "report.offtopic",
+   "kind": "report",
+   "title": "Оффтоп (демо)",
+   "rules": [
+    "3.1"
+   ],
+   "examples": []
+  }
+ ],
+ "priorities": [
+  {
+   "code": "p0",
+   "title": "критично",
+   "rule": "демо"
+  },
+  {
+   "code": "p1",
+   "title": "высокий",
+   "rule": "демо"
+  },
+  {
+   "code": "p2",
+   "title": "обычный",
+   "rule": "демо"
+  },
+  {
+   "code": "p3",
+   "title": "низкий",
+   "rule": "демо"
+  }
+ ],
+ "needs_human_always": [
+  "report.account",
+  "report.payment",
+  "complaint.admin"
+ ]
 }

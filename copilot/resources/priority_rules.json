@@ -1,0 +1,46 @@
+{
+ "_doc": "Приоритеты по taxonomy.json. Пример из ТЗ: оскорбление со скриншотами = p2. Жалоба без доказательств = p3.",
+ "category_default": {
+  "complaint.insult": "p2",
+  "complaint.cheat": "p1",
+  "complaint.dm": "p2",
+  "complaint.scam": "p1",
+  "complaint.rmt_ads": "p1",
+  "complaint.admin": "p2",
+  "complaint.other": "p2",
+  "complaint.invalid": "p3",
+  "report.question": "p3",
+  "report.help": "p2",
+  "report.complaint": "p2",
+  "report.account": "p0",
+  "report.payment": "p0",
+  "report.offtopic": "p3"
+ },
+ "complaint_without_evidence": "p3",
+ "concept_overrides": {
+  "threat": "p0",
+  "cheat": "p1",
+  "rmt_ads": "p1",
+  "scam": "p1"
+ },
+ "rules_question_words": [
+  "правил",
+  "можно ли",
+  "разрешено",
+  "запрещено",
+  "наказыва",
+  "это нарушение",
+  "считается ли"
+ ],
+ "rules_question_priority": "p2",
+ "mass_bug_words": [
+  "у всех",
+  "массов",
+  "всем игрокам",
+  "сервер упал",
+  "сервер лежит",
+  "никто не может",
+  "у всего сервера"
+ ],
+ "mass_bug_priority": "p0"
+}

@@ -85,6 +85,19 @@ class ConceptMap:
         self.concepts = concepts
         self.cat_to_concept: dict[str, str] = {}
         self.concept_to_cats: dict[str, list[str]] = {}
+        explicit_path = RESOURCES_DIR / "category_map.json"
+        explicit = {}
+        if explicit_path.exists():
+            with open(explicit_path, encoding="utf-8") as f:
+                explicit = {k: v for k, v in json.load(f).items() if not k.startswith("_")}
+        if explicit and all(c in taxonomy.by_id for cats in explicit.values() for c in cats):
+            for name, cats in explicit.items():
+                if name not in concepts:
+                    continue
+                self.concept_to_cats[name] = list(cats)
+                for c in cats:
+                    self.cat_to_concept.setdefault(c, name)
+            return
         for cat in taxonomy.categories:
             best, best_s = None, 0.0
             hay = cat.text.lower()

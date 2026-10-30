@@ -7,7 +7,7 @@ import unicodedata
 # cp1251 characters (table from the brief / data README).
 KK_FROM_CP1251 = {
     "ќ": "қ", "Ќ": "Қ",
-    "ѓ": "ғ", "Ѓ": "Ғ", "ґ": "ғ", "Ґ": "Ғ",
+    "ѓ": "ғ", "Ѓ": "Ғ", "ґ": "ө", "Ґ": "Ө",
     "ѕ": "ң", "Ѕ": "Ң",
     "є": "ә", "Є": "Ә",
     "ј": "ө", "Ј": "Ө",
@@ -19,7 +19,7 @@ KK_TO_CP1251 = {
     "ө": "ј", "Ө": "Ј", "ұ": "ў", "Ұ": "Ў", "ү": "ї", "Ү": "Ї", "һ": "h", "Һ": "H",
 }
 # Characters that only appear in cp1251-encoded Kazakh (never in Russian or Uzbek).
-_KK_CP1251_MARKERS = set("ќЌѓЃѕЅєЄјЈїЇ")
+_KK_CP1251_MARKERS = set("ќЌѓЃѕЅјЈ")  # є ї і ґ also occur in Ukrainian, so they alone do not mean Kazakh
 # Latin letters typed inside Cyrillic words (keyboard layout mix): normalise to Cyrillic.
 _HOMOGLYPHS = str.maketrans({
     "a": "а", "c": "с", "e": "е", "o": "о", "p": "р", "x": "х", "y": "у", "k": "к",

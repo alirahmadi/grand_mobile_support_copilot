@@ -1,15 +1,14 @@
-"""Loading taxonomy.json (format-agnostic): categories, priorities and their criteria."""
+"""taxonomy.json: categories (with their rule references), priorities and the always-human list."""
 
 import json
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
-_ID_KEYS = ("id", "code", "key", "slug", "category", "name_en")
-_NAME_KEYS = ("name", "title", "label", "name_ru", "название")
-_DESC_KEYS = ("description", "desc", "definition", "criteria", "when", "описание", "критерии")
-_EX_KEYS = ("examples", "example", "samples", "примеры")
-_PRIO_KEYS = ("priority", "default_priority", "prio")
+_ID_KEYS = ("code", "id", "key", "slug", "category")
+_NAME_KEYS = ("title", "name", "label", "name_ru")
+_DESC_KEYS = ("description", "desc", "definition", "criteria", "rule", "when")
 
 
 @dataclass
@@ -18,15 +17,17 @@ class Category:
     name: str = ""
     description: str = ""
     examples: list = field(default_factory=list)
-    default_priority: str = ""
-    needs_rules: bool | None = None
+    rules: list = field(default_factory=list)
+    kind_field: str | None = None
 
     @property
     def kind(self) -> str | None:
+        if self.kind_field in ("complaint", "report"):
+            return self.kind_field
         head = self.id.split(".")[0].lower()
-        if head.startswith("complaint") or head in ("жалоба", "complaints"):
+        if head.startswith("complaint"):
             return "complaint"
-        if head.startswith("report") or head in ("репорт", "reports"):
+        if head.startswith("report"):
             return "report"
         return None
 
@@ -50,7 +51,7 @@ def _s(v) -> str:
         return "; ".join(_s(x) for x in v)
     if isinstance(v, dict):
         return "; ".join(f"{k}: {_s(x)}" for k, x in v.items())
-    return str(v)
+    return unicodedata.normalize("NFC", str(v))
 
 
 def _first(d: dict, keys) -> str:
@@ -61,89 +62,46 @@ def _first(d: dict, keys) -> str:
 
 
 class Taxonomy:
-    def __init__(self, categories: list[Category], priorities: list[Priority], raw: dict | list):
+    def __init__(self, categories: list[Category], priorities: list[Priority], always_human: list[str], raw):
         self.categories = categories
         self.by_id = {c.id: c for c in categories}
         self.priorities = priorities or [Priority(p) for p in ("p0", "p1", "p2", "p3")]
         self.priority_ids = [p.id for p in self.priorities]
+        self.always_human = set(always_human)
         self.raw = raw
 
     @classmethod
     def load(cls, path: Path) -> "Taxonomy":
         with open(path, encoding="utf-8") as f:
             raw = json.load(f)
-        cats_node, prio_node = raw, None
-        if isinstance(raw, dict):
-            cats_node = next((raw[k] for k in ("categories", "category", "taxonomy", "категории") if k in raw), None)
-            prio_node = next((raw[k] for k in ("priorities", "priority", "priority_levels", "приоритеты") if k in raw), None)
-            if cats_node is None:
-                cats_node = {k: v for k, v in raw.items() if k not in ("priorities", "priority", "version", "meta")}
-        categories: list[Category] = []
-        cls._walk_cats(cats_node, "", categories)
-        priorities = cls._parse_priorities(prio_node)
-        # categories may carry their own priority hints
-        return cls(categories, priorities, raw)
-
-    @classmethod
-    def _walk_cats(cls, node, prefix: str, out: list):
-        if isinstance(node, list):
-            for x in node:
-                if isinstance(x, str):
-                    out.append(Category(id=f"{prefix}.{x}" if prefix and "." not in x else x))
-                elif isinstance(x, dict):
-                    cid = _first(x, _ID_KEYS) or _first(x, _NAME_KEYS)
-                    sub = next((x[k] for k in ("subcategories", "children", "items", "categories") if k in x), None)
-                    full = cid if (not prefix or "." in cid or cid.startswith(prefix)) else f"{prefix}.{cid}"
-                    if sub:
-                        cls._walk_cats(sub, full, out)
-                    else:
-                        out.append(Category(
-                            id=full, name=_first(x, _NAME_KEYS), description=_first(x, _DESC_KEYS),
-                            examples=x.get("examples") or x.get("example") or [],
-                            default_priority=_first(x, _PRIO_KEYS),
-                            needs_rules=x.get("needs_rules", x.get("requires_rules")),
-                        ))
-            return
-        if isinstance(node, dict):
-            for k, v in node.items():
-                full = f"{prefix}.{k}" if prefix else k
-                if isinstance(v, str):
-                    out.append(Category(id=full, description=v))
-                elif isinstance(v, dict) and (set(v) & set(_DESC_KEYS + _NAME_KEYS + _EX_KEYS)):
-                    out.append(Category(
-                        id=_first(v, ("id", "code")) or full, name=_first(v, _NAME_KEYS),
-                        description=_first(v, _DESC_KEYS), examples=v.get("examples") or [],
-                        default_priority=_first(v, _PRIO_KEYS),
-                        needs_rules=v.get("needs_rules", v.get("requires_rules")),
-                    ))
-                else:
-                    cls._walk_cats(v, full, out)
-
-    @staticmethod
-    def _parse_priorities(node) -> list[Priority]:
-        out = []
-        if isinstance(node, dict):
-            for k, v in node.items():
-                if isinstance(v, dict):
-                    out.append(Priority(k, _first(v, _NAME_KEYS), _first(v, _DESC_KEYS) or _s(v)))
-                else:
-                    out.append(Priority(k, "", _s(v)))
-        elif isinstance(node, list):
-            for x in node:
-                if isinstance(x, dict):
-                    pid = _first(x, ("id", "code", "key", "level", "priority"))
-                    out.append(Priority(pid, _first(x, _NAME_KEYS), _first(x, _DESC_KEYS) or _s(x)))
-                elif isinstance(x, str):
-                    out.append(Priority(x))
-        out = [p for p in out if re.fullmatch(r"p\d", p.id.lower())]
-        return sorted(out, key=lambda p: p.id)
+        cats_node = raw.get("categories", []) if isinstance(raw, dict) else raw
+        categories = []
+        if isinstance(cats_node, dict):  # {"complaint.insult": {...}} or {"complaint.insult": "description"}
+            cats_node = [{"code": k, **(v if isinstance(v, dict) else {"description": v})} for k, v in cats_node.items()]
+        for c in cats_node or []:
+            if isinstance(c, str):
+                categories.append(Category(id=c))
+                continue
+            categories.append(Category(
+                id=_first(c, _ID_KEYS), name=_first(c, _NAME_KEYS), description=_first(c, _DESC_KEYS),
+                examples=[_s(x) for x in c.get("examples") or []], rules=[_s(x) for x in c.get("rules") or []],
+                kind_field=c.get("kind")))
+        prios = []
+        pnode = raw.get("priorities", []) if isinstance(raw, dict) else []
+        if isinstance(pnode, dict):
+            pnode = [{"code": k, **(v if isinstance(v, dict) else {"rule": v})} for k, v in pnode.items()]
+        for p in pnode:
+            if isinstance(p, dict):
+                prios.append(Priority(_first(p, ("code", "id", "level")), _first(p, _NAME_KEYS), _first(p, _DESC_KEYS)))
+        prios = sorted([p for p in prios if re.fullmatch(r"p\d", p.id.lower())], key=lambda p: p.id)
+        always = raw.get("needs_human_always", []) if isinstance(raw, dict) else []
+        return cls(categories, prios, always, raw)
 
     def ids_for_kind(self, kind: str) -> list[str]:
         ids = [c.id for c in self.categories if c.kind in (kind, None)]
         return ids or [c.id for c in self.categories]
 
     def fallback_category(self, kind: str) -> str:
-        """The 'other' bucket for this kind of ticket."""
         cands = self.ids_for_kind(kind)
         for c in cands:
             if re.search(r"other|misc|general|проч|друг", c, re.I):
@@ -151,19 +109,19 @@ class Taxonomy:
         return cands[-1] if cands else "other"
 
     def as_prompt_block(self) -> str:
-        lines = ["Категории:"]
+        lines = ["Категории (код — название; пункты правил категории; примеры):"]
         for c in self.categories:
-            line = f"- {c.id}"
-            if c.name:
-                line += f" — {c.name}"
+            line = f"- {c.id} [{c.kind or 'any'}] — {c.name}"
             if c.description:
                 line += f": {c.description}"
+            if c.rules:
+                line += f"; пункты: {', '.join(c.rules)}"
             if c.examples:
-                line += f" Примеры: {_s(c.examples)[:200]}"
-            if c.default_priority:
-                line += f" (обычный приоритет {c.default_priority})"
+                line += f"; примеры: {' | '.join(c.examples)}"
             lines.append(line)
         lines.append("Приоритеты:")
         for p in self.priorities:
-            lines.append(f"- {p.id} {p.name}: {p.criteria}".rstrip(": "))
+            lines.append(f"- {p.id} {p.name}: {p.criteria}")
+        if self.always_human:
+            lines.append("Всегда нужен человек (needs_human=true): " + ", ".join(sorted(self.always_human)))
         return "\n".join(lines)
