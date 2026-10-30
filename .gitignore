@@ -1,0 +1,15 @@
+# Данные Grand Mobile и всё, что из них получено, НЕ публикуем (условие хакатона)
+data/*
+!data/.gitkeep
+models/*
+!models/.gitkeep
+reports/*
+!reports/.gitkeep
+pred.jsonl
+*.stats.json
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+copilot_queue.sqlite3

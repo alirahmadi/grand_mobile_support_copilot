@@ -1,0 +1,28 @@
+{
+  "_note": "ДЕМО-ФИКСТУРА для тестов кода. Положите настоящий taxonomy.json в data/.",
+  "categories": [
+    {"id": "complaint.insult", "name": "Оскорбление", "description": "оскорбления игрока или родных в чате"},
+    {"id": "complaint.cheat", "name": "Читы", "description": "использование читов и стороннего ПО"},
+    {"id": "complaint.dm", "name": "DM/DB", "description": "убийство без причины"},
+    {"id": "complaint.nonrp", "name": "NonRP", "description": "нарушение ролевого процесса"},
+    {"id": "complaint.scam", "name": "Обман", "description": "мошенничество при сделках"},
+    {"id": "complaint.admin", "name": "Жалоба на администрацию", "description": "действия администратора"},
+    {"id": "complaint.other", "name": "Другое", "description": "прочие жалобы"},
+    {"id": "report.stuck", "name": "Застрял", "description": "застрял в текстурах, не может выбраться"},
+    {"id": "report.bug", "name": "Баг", "description": "ошибки и сбои игры"},
+    {"id": "report.lost_items", "name": "Пропажа имущества", "description": "пропали машина, дом, деньги"},
+    {"id": "report.payment", "name": "Платежи", "description": "донат не пришел, оплата"},
+    {"id": "report.account", "name": "Аккаунт", "description": "взлом, доступ к аккаунту"},
+    {"id": "report.ban_appeal", "name": "Обжалование", "description": "просьба снять бан или наказание"},
+    {"id": "report.player", "name": "Нарушение игрока", "description": "игрок оскорбляет, убивает, читерит прямо сейчас"},
+    {"id": "report.question", "name": "Вопрос", "description": "вопрос об игре"},
+    {"id": "report.other", "name": "Другое", "description": "прочее"},
+    {"id": "spam", "name": "Спам", "description": "реклама, флуд, бессмыслица"}
+  ],
+  "priorities": [
+    {"id": "p0", "name": "критично", "criteria": "взлом аккаунта, угрозы в реальной жизни, массовые читы"},
+    {"id": "p1", "name": "высокий", "criteria": "платежи, читы, мошенничество, жалобы на администрацию"},
+    {"id": "p2", "name": "средний", "criteria": "оскорбления, DM, NonRP, баги, апелляции"},
+    {"id": "p3", "name": "низкий", "criteria": "вопросы, застревания, спам"}
+  ]
+}

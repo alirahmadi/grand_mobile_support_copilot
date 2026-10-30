@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Support Copilot — очередь</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #fff; --ink: #1d2433; --muted: #667085; --line: #e4e7ec;
+    --accent: #2f6fed; --p0: #d92d20; --p1: #f79009; --p2: #2f6fed; --p3: #98a2b3; --ok: #12b76a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0f1218; --panel: #171b23; --ink: #e6e9ef; --muted: #98a2b3; --line: #2a303b; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--ink); }
+  header { display: flex; gap: 12px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+  header h1 { font-size: 16px; margin: 0 12px 0 0; }
+  button, select { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.danger { border-color: var(--p0); color: var(--p0); }
+  .muted { color: var(--muted); }
+  main { display: grid; grid-template-columns: minmax(280px, 380px) 1fr; height: calc(100vh - 58px); }
+  @media (max-width: 800px) { main { grid-template-columns: 1fr; height: auto; } }
+  #list { overflow-y: auto; border-right: 1px solid var(--line); }
+  .item { padding: 10px 14px; border-bottom: 1px solid var(--line); cursor: pointer; background: var(--panel); }
+  .item.active { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .item .top { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .item .txt { margin-top: 4px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .badge { font-size: 12px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); }
+  .prio { color: #fff; border: 0; }
+  .prio.p0 { background: var(--p0); } .prio.p1 { background: var(--p1); } .prio.p2 { background: var(--p2); } .prio.p3 { background: var(--p3); }
+  .human { border-color: var(--p1); color: var(--p1); }
+  .auto { border-color: var(--ok); color: var(--ok); }
+  #detail { overflow-y: auto; padding: 16px 20px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; }
+  .card h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .msg { padding: 8px 10px; border-radius: 8px; background: var(--bg); margin: 6px 0; white-space: pre-wrap; }
+  .msg b { font-size: 12px; color: var(--muted); display: block; }
+  textarea { width: 100%; min-height: 120px; font: inherit; padding: 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .kv { display: grid; grid-template-columns: 140px 1fr; gap: 4px 12px; }
+  .rule { padding: 6px 10px; border-left: 3px solid var(--accent); background: var(--bg); margin: 6px 0; border-radius: 4px; }
+  ul.reasons { margin: 0; padding-left: 18px; }
+  #tpl { display: none; }
+  .empty { padding: 40px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Support Copilot</h1>
+  <select id="status"><option value="open">Открытые</option><option value="all">Все</option></select>
+  <button id="demo">Загрузить 25 обращений</button>
+  <button id="showTpl">Шаблоны</button>
+  <span id="llm" class="muted"></span>
+</header>
+<main>
+  <div id="list"></div>
+  <div id="detail"><div class="empty">Выберите обращение слева</div></div>
+</main>
+<div id="tpl"></div>
+<script>
+const $ = (s) => document.querySelector(s);
+let items = [], current = null, meta = {};
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function load() {
+  items = await api("/api/queue?status=" + $("#status").value);
+  renderList();
+  if (current) { const it = items.find(i => i.id === current); if (it) show(it); }
+}
+function renderList() {
+  if (!items.length) { $("#list").innerHTML = '<div class="empty">Очередь пуста — нажмите «Загрузить 25 обращений»</div>'; return; }
+  $("#list").innerHTML = items.map(it => {
+    const r = it.result, txt = (it.request.messages || []).filter(m => m.role !== "admin").map(m => m.text).join(" ");
+    return `<div class="item ${it.id === current ? "active" : ""}" data-id="${it.id}">
+      <div class="top"><span class="badge prio ${r.priority}">${r.priority}</span>
+      <span class="badge">${esc(r.category)}</span><span class="badge">${r.lang}</span>
+      ${r.is_spam_or_duplicate ? '<span class="badge">спам/дубль</span>' : ""}
+      <span class="badge ${r.needs_human ? "human" : "auto"}">${r.needs_human ? "человек" : "авто"}</span>
+      ${it.status !== "open" ? `<span class="badge">${it.status}</span>` : ""}</div>
+      <div class="txt">${esc(txt)}</div></div>`;
+  }).join("");
+  document.querySelectorAll(".item").forEach(el => el.onclick = () => { current = +el.dataset.id; renderList(); show(items.find(i => i.id === current)); });
+}
+async function show(it) {
+  const r = it.result, req = it.request;
+  const rules = await Promise.all((r.draft_reply.cited || []).map(id => api("/api/rules/" + encodeURIComponent(id)).catch(() => ({ id, text: "?" }))));
+  const msgs = (req.messages || []).filter(m => m.role !== "admin").map(m => `<div class="msg"><b>${esc(m.role)}</b>${esc(m.text)}</div>`).join("");
+  const opt = (arr, v) => arr.map(x => `<option ${x === v ? "selected" : ""}>${esc(x)}</option>`).join("");
+  $("#detail").innerHTML = `
+    <div class="card"><h3>Обращение #${it.id} · ${esc(req.kind || "")}</h3>${msgs}
+      <div class="muted">Вложений: ${req.images_count ?? 0} · пункт в форме: ${esc(req.rule_refs_raw || "—")} · ник: ${esc(req.reported_nick || "—")}</div></div>
+    <div class="card"><h3>Разбор</h3><div class="kv">
+      <span class="muted">Категория</span><span><select id="cat">${opt(meta.categories || [r.category], r.category)}</select></span>
+      <span class="muted">Приоритет</span><span><select id="prio">${opt(meta.priorities || [r.priority], r.priority)}</select></span>
+      <span class="muted">Язык</span><span>${r.lang}</span>
+      <span class="muted">Факты</span><span>ник: ${esc(r.extracted.nickname || "—")}, пункты: ${esc((r.extracted.rule_refs || []).join(", ") || "—")}, доказательства: ${r.extracted.has_evidence}, сервер: ${esc(r.extracted.server || "—")}</span>
+      <span class="muted">Уверенность</span><span>${r.confidence} · ${r.meta?.mode || ""} · вердикт: ${esc(r.meta?.suggested_verdict || "—")}</span>
+      <span class="muted">Почему</span><span><ul class="reasons">${r.reasons.map(x => `<li>${esc(x)}</li>`).join("")}</ul></span>
+    </div></div>
+    <div class="card"><h3>Черновик (${r.draft_reply.lang})</h3>
+      <textarea id="draft">${esc(it.final_text || r.draft_reply.text)}</textarea>
+      ${rules.map(x => `<div class="rule"><b>п. ${esc(x.id)}</b> ${esc(x.text)}</div>`).join("") || '<div class="muted">Без цитат правил</div>'}
+      <div class="row" style="margin-top:10px">
+        <button class="primary" id="send">Отправить</button>
+        <button id="edit">Сохранить правку и отправить</button>
+        <button class="danger" id="esc">Эскалировать</button>
+        <span id="st" class="muted"></span>
+      </div></div>`;
+  const act = async (action) => {
+    await api(`/api/queue/${it.id}/action`, { method: "POST", body: JSON.stringify({ action, text: $("#draft").value, category: $("#cat").value, priority: $("#prio").value }) });
+    $("#st").textContent = "сохранено"; load();
+  };
+  $("#send").onclick = () => act("send"); $("#edit").onclick = () => act("edit"); $("#esc").onclick = () => act("escalate");
+}
+$("#status").onchange = load;
+$("#demo").onclick = async () => { $("#demo").disabled = true; $("#demo").textContent = "Обработка…"; await api("/api/queue/demo?n=25", { method: "POST" }); $("#demo").disabled = false; $("#demo").textContent = "Загрузить 25 обращений"; load(); };
+$("#showTpl").onclick = async () => {
+  const t = await api("/api/templates");
+  const row = (x) => `<div class="rule"><b>${x.count}×</b> ${esc(x.kind || "")} ${esc(x.verdict || x.category || "")}<br>${esc(x.template)}</div>`;
+  $("#detail").innerHTML = `<div class="card"><h3>Шаблоны из кластеров похожих ответов</h3>${(t.mined_from_history || []).map(row).join("") || '<div class="muted">Запустите make train на реальных данных</div>'}</div>
+    <div class="card"><h3>Кандидаты из правок администраторов</h3>${(t.from_admin_edits || []).map(row).join("") || '<div class="muted">Пока нет правок</div>'}</div>`;
+};
+(async () => { meta = await api("/api/meta"); $("#llm").textContent = meta.llm ? "LLM: " + meta.llm : "офлайн-режим (без LLM)"; load(); })();
+</script>
+</body>
+</html>

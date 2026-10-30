@@ -1,0 +1,21 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      # Без данных организаторов и без ключа: тесты идут на демо-фикстурах в офлайн-режиме
+      - run: python -m pytest -q tests
+        env:
+          COPILOT_LLM: "off"
+      - run: python -m copilot.cli predict --in samples/tickets_demo.jsonl --out reports/ci_pred.jsonl --offline
